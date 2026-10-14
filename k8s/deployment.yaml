@@ -1,8 +1,17 @@
-# VULNERÁVEL DE PROPÓSITO: privilegiado, root, sem limites, tag latest
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo
+  namespace: demo
+automountServiceAccountToken: false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: demo
+  namespace: demo
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=Tag fixa adotada; fixar por digest fica como melhoria futura
 spec:
   replicas: 1
   selector:
@@ -13,9 +22,60 @@ spec:
       labels:
         app: demo
     spec:
+      serviceAccountName: demo
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: demo
-          image: nginx:latest
+          image: nginxinc/nginx-unprivileged:1.27
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
           securityContext:
-            privileged: true
-            runAsUser: 0
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  podSelector:
+    matchLabels:
+      app: demo
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 8080

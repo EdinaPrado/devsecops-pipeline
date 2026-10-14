@@ -21,6 +21,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  checkov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instala o Checkov (versão fixa)
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --no-cache-dir checkov==3.2.508
+
+      - name: Scan do Terraform
+        run: |
+          . .venv/bin/activate
+          checkov -d terraform --framework terraform --compact --quiet
+
+      - name: Scan do Kubernetes
+        if: always()
+        run: |
+          . .venv/bin/activate
+          checkov -d k8s --framework kubernetes --compact --quiet
+
   hadolint:
     runs-on: ubuntu-latest
     steps:

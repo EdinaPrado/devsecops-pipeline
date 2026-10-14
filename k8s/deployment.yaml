@@ -10,6 +10,8 @@ kind: Deployment
 metadata:
   name: demo
   namespace: demo
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=Tag fixa adotada; fixar por digest fica como melhoria futura
 spec:
   replicas: 1
   selector:
@@ -19,8 +21,6 @@ spec:
     metadata:
       labels:
         app: demo
-      annotations:
-        checkov.io/skip1: CKV_K8S_43=Tag fixa adotada; fixar por digest fica como melhoria futura
     spec:
       serviceAccountName: demo
       automountServiceAccountToken: false

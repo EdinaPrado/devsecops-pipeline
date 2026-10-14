@@ -1,81 +1,81 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: demo
-  namespace: demo
-automountServiceAccountToken: false
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: demo
-  namespace: demo
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: demo
-  template:
-    metadata:
-      labels:
-        app: demo
-      annotations:
-        checkov.io/skip1: CKV_K8S_43=Tag fixa adotada; fixar por digest fica como melhoria futura
-    spec:
-      serviceAccountName: demo
-      automountServiceAccountToken: false
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        runAsGroup: 10001
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: demo
-          image: nginxinc/nginx-unprivileged:1.27
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8080
-          securityContext:
-            privileged: false
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 8080
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 8080
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir: {}
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: demo
-  namespace: demo
-spec:
-  podSelector:
-    matchLabels:
-      app: demo
-  policyTypes: ["Ingress", "Egress"]
-  ingress:
-    - from:
-        - podSelector: {}
-      ports:
-        - port: 8080
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  hadolint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint do Dockerfile
+        run: docker run --rm -i hadolint/hadolint:v2.12.0 < app/Dockerfile
+
+  trivy-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: app
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  trivy-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build da imagem
+        run: docker build -t demo:ci app
+
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: demo:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  checkov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instala o Checkov (versão fixa)
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --no-cache-dir checkov==3.2.508
+
+      - name: Scan do Terraform
+        run: |
+          . .venv/bin/activate
+          checkov -d terraform --framework terraform --compact --quiet
+
+      - name: Scan do Kubernetes
+        if: always()
+        run: |
+          . .venv/bin/activate
+          checkov -d k8s --framework kubernetes --compact --quiet

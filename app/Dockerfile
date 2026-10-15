@@ -1,7 +1,9 @@
-# VULNERÁVEL DE PROPÓSITO: imagem antiga, roda como root
-FROM python:3.9
+FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+EXPOSE 8080
 CMD ["python", "app.py"]
